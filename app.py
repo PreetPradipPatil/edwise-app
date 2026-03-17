@@ -17,12 +17,29 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
+:root {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --text-primary: #1e293b;
+    --border-color: #e2e8f0;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #0f172a;
+        --bg-secondary: #1e293b;
+        --text-primary: #f1f5f9;
+        --border-color: #334155;
+    }
+}
+
 html, body, [class*="css"] {
     font-family: 'Plus Jakarta Sans', sans-serif !important;
-    background: #f8fafc !important;
-    color: #1e293b !important;
 }
-.main { background: #f8fafc !important; }
+.main { 
+    background: var(--bg-primary) !important; 
+    color: var(--text-primary) !important;
+}
 .block-container {
     padding-top: 1rem !important;
     padding-left: 1.8rem !important;
@@ -37,8 +54,8 @@ button[data-testid="baseButton-headerNoPadding"]      { display: none !important
 [data-testid="stIconMaterial"]                        { display: none !important; }
 
 section[data-testid="stSidebar"] {
-    background: #ffffff !important;
-    border-right: 1px solid #e2e8f0 !important;
+    background: var(--bg-secondary) !important;
+    border-right: 1px solid var(--border-color) !important;
     min-width: 340px !important;
     max-width: 340px !important;
     width: 340px !important;
@@ -210,9 +227,17 @@ def get_bearer_token():
     return d["access_token"]
 
 def api_get(url):
-    token = get_bearer_token()
-    r = requests.get(url, headers={"Authorization":f"Bearer {token}"})
-    return r
+    try:
+        token = get_bearer_token()
+        r = requests.get(url, headers={"Authorization":f"Bearer {token}"}, timeout=10)
+        r.raise_for_status()
+        return r
+    except requests.exceptions.RequestException as e:
+        st.warning(f"⚠️ API Error: {str(e)}")
+        return None
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        return None
 
 def extract_nested(record, path):
     parts = path.replace("[",".").replace("]","").split(".")
@@ -298,7 +323,7 @@ def check_descriptor_via_api(descriptor_type, code_value, show_debug=True):
     Check if a codeValue exists in the descriptor API.
     Returns (is_valid, reason_message)
     
-    UPDATED: Show API response in expander (like Student/Contact/Association)
+    UPDATED: Show API response in expander with better error handling
     """
     api_url = DESCRIPTOR_API_MAP.get(descriptor_type)
     if not api_url:
@@ -309,6 +334,9 @@ def check_descriptor_via_api(descriptor_type, code_value, show_debug=True):
     
     try:
         token = get_bearer_token()
+        if not token:
+            return False, "Failed to get authentication token"
+            
         r = requests.get(query_url, headers={"Authorization": f"Bearer {token}"}, timeout=10)
         
         # Show debug output for descriptors (like Student/Contact)
@@ -323,15 +351,22 @@ def check_descriptor_via_api(descriptor_type, code_value, show_debug=True):
         if r.status_code != 200:
             return False, f"API error {r.status_code} — unable to validate '{code_value}'"
         
-        data = r.json()
-        items = data if isinstance(data, list) else data.get("value", [])
-        
-        # If we get results, the codeValue is valid
-        if items and len(items) > 0:
-            return True, f"✓ Valid descriptor: '{code_value}' found in {descriptor_type} API"
-        else:
-            return False, f"✗ Invalid descriptor: '{code_value}' NOT found in {descriptor_type} API"
+        try:
+            data = r.json()
+            items = data if isinstance(data, list) else data.get("value", [])
             
+            # If we get results, the codeValue is valid
+            if items and len(items) > 0:
+                return True, f"✓ Valid descriptor: '{code_value}' found in {descriptor_type} API"
+            else:
+                return False, f"✗ Invalid descriptor: '{code_value}' NOT found in {descriptor_type} API"
+        except ValueError as je:
+            return False, f"Invalid JSON response: {str(je)}"
+            
+    except requests.exceptions.Timeout:
+        return False, f"API timeout — {descriptor_type} validation failed"
+    except requests.exceptions.ConnectionError:
+        return False, f"Connection error — cannot reach {descriptor_type} API"
     except Exception as e:
         return False, f"API validation error: {str(e)}"
 
