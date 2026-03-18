@@ -1,0 +1,115 @@
+# Secrets - NEVER commit these!
+.streamlit/secrets.toml
+.env
+.env.local
+.env.*.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+pipenv.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Streamlit
+.streamlit/config.toml
+*.streamlit.app
+streamlit_cache/
+.streamlit/logs/
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+*.cab
+*.msi
+*.msix
+*.msinstaller
+*.msp
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+.~*
+desktop.ini
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Node modules (if using any frontend tools)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Local files
+local_test_data/
+test_outputs/
+temp/
+tmp/
+
+# Excel files (unless intentional)
+~$*.xlsx
+~$*.xls
+
+# Credentials and sensitive files
+credentials/
+secrets/
+keys/
+.aws/
+.azure/
+config.json
+token.txt
