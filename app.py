@@ -6,12 +6,6 @@ import io
 import base64
 from datetime import datetime, timedelta, timezone
 
-st.set_page_config(
-    page_title="EdWise | Student Verification",
-    page_icon="🎓",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 st.markdown("""
 <style>
