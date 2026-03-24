@@ -335,10 +335,6 @@ with st.sidebar:
         "<div style='font-size:10px;font-weight:600;color:#94a3b8;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px;'>Vendor Certification Portal</div>"
         "</div>", unsafe_allow_html=True)
 
-    # ── Module switcher ──────────────────────────────────────────
-    st.markdown("<div style='padding:7px 12px 3px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;'>Modules</div>", unsafe_allow_html=True)
-    st.markdown("<div style='background:#eff6ff;border-left:3px solid #1a6fd4;margin:0;padding:0;'>", unsafe_allow_html=True)
-
     # ── Resource list ────────────────────────────────────────────
     st.markdown("<div style='padding:7px 12px 3px;margin-top:8px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;'>Resources</div>", unsafe_allow_html=True)
     for icon, short, name in RESOURCES:
