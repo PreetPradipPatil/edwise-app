@@ -1,4 +1,5 @@
 import streamlit as st
 
-# Redirect to the first page
-st.switch_page("pages/1_Student_Verification.py")
+if "redirected" not in st.session_state:
+    st.session_state.redirected = True
+    st.switch_page("pages/1_Student_Verification.py")
