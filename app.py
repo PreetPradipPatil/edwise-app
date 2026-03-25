@@ -88,7 +88,7 @@ hr { border-color:#e2e8f0 !important; margin:14px 0 !important; }
 TOKEN_URL    = st.secrets["ods_api"]["token_url"]
 API_KEY      = st.secrets["ods_api"]["api_key"]
 API_SECRET   = st.secrets["ods_api"]["api_secret"]
-BASE_API_URL = "https://doe-edfiods-a-c-v2026-ca.grayisland-7cb4ec7b.eastus.azurecontainerapps.io/2026/data/v3/ed-fi"
+BASE_API_URL   = st.secrets["ods_api"]["base_api_url"]
 
 # ─────────────────────────────────────────────────────────────────
 # 17 RESOURCES
