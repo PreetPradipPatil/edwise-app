@@ -562,20 +562,25 @@ button[kind="secondary"]:has(div:contains("🗑️")) { background-color:#fee2e2
 st.divider()
 
 btn_c, _sp2 = st.columns([2,3])
+with btn_c:
+# ── STEP 3: Fetch & Validate ─────────────────────────────────────
 st.markdown(
     """
-    <div style='margin-bottom:16px;'>
-        <div style='display:flex; align-items:center; gap:10px;'>
-            <span style='background:#1a6fd4; color:white; font-size:10px; font-weight:700; 
-                        padding:2px 8px; border-radius:4px; letter-spacing:0.5px;'>
+    <div style="margin-bottom: 16px;">
+        <!-- Blue STEP badge + Title in one line -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+            <span style="background: #1a6fd4; color: white; font-size: 11px; font-weight: 700; 
+                        padding: 4px 10px; border-radius: 6px; letter-spacing: 0.5px; 
+                        text-transform: uppercase;">
                 STEP 3
             </span>
-            <div style='font-size:19px; font-weight:800; color:#0d2d5e;'>
+            <span style="font-size: 20px; font-weight: 800; color: #0d2d5e;">
                 Fetch & Validate
-            </div>
+            </span>
         </div>
-        
-        <div style='font-size:12.8px; color:#64748b; margin-top:10px; line-height:1.55;'>
+
+        <!-- Description -->
+        <div style="font-size: 13px; color: #64748b; line-height: 1.6; margin-bottom: 16px;">
             Pull live data from the Ed-Fi ODS and run all field-level validations and descriptor checks.
         </div>
     </div>
@@ -583,9 +588,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-run = st.button("▶ Run Certification Validation", 
-                type="primary", 
-                use_container_width=True)
+# Button
+run = st.button(
+    "▶ Run Certification Validation", 
+    type="primary", 
+    use_container_width=True,
+    key="btn_run_certification"
+)
 
 if run:
     if not id_pairs:
