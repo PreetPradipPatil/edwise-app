@@ -562,15 +562,30 @@ button[kind="secondary"]:has(div:contains("🗑️")) { background-color:#fee2e2
 st.divider()
 
 btn_c, _sp2 = st.columns([2,3])
-with btn_c:
-    st.markdown(
-        "<div style='margin-bottom:8px;'>"
-        "<span style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1a6fd4;'>Step 3</span>"
-        "<div style='font-size:17px;font-weight:800;color:#0d2d5e;margin-top:1px;'>Fetch &amp; Validate</div>"
-        "<div style='width:32px;height:3px;background:#1a6fd4;border-radius:2px;margin-top:4px;'></div>"
-        "<div style='font-size:12px;color:#64748b;margin-top:6px;margin-bottom:12px;font-weight:400;'>Pull live data from the Ed-Fi ODS and run all field-level validations and descriptor checks.</div>"
-        "</div>", unsafe_allow_html=True)
-    run = st.button("▶  Run Certification Validation", type="primary", width="stretch")
+st.markdown(
+    """
+    <div style='margin-bottom:16px;'>
+        <div style='display:flex; align-items:center; gap:10px;'>
+            <span style='background:#1a6fd4; color:white; font-size:10px; font-weight:700; 
+                        padding:2px 8px; border-radius:4px; letter-spacing:0.5px;'>
+                STEP 3
+            </span>
+            <div style='font-size:19px; font-weight:800; color:#0d2d5e;'>
+                Fetch & Validate
+            </div>
+        </div>
+        
+        <div style='font-size:12.8px; color:#64748b; margin-top:10px; line-height:1.55;'>
+            Pull live data from the Ed-Fi ODS and run all field-level validations and descriptor checks.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+run = st.button("▶ Run Certification Validation", 
+                type="primary", 
+                use_container_width=True)
 
 if run:
     if not id_pairs:
