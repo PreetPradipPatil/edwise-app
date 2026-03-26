@@ -1,7 +1,4 @@
-"""
-EdWise Group — Student Verification (with Login)
-File: app.py
-"""
+import streamlit as st
 import streamlit as st
 import pandas as pd
 import requests
@@ -341,13 +338,9 @@ def style_validation_df(df):
     return df.style.apply(color_row, axis=1)
 
 # ─────────────────────────────────────────────────────────────────
-# HELPER: Step 1 मधील Record 1 चे actual IDs मिळवा
+# HELPER: Step 1
 # ─────────────────────────────────────────────────────────────────
 def get_resolved_endpoint_url(template_url):
-    """
-    API endpoint template URL मधील {StudentUniqueId} आणि {ContactUniqueId}
-    placeholders ऐवजी Step 1 / Record 1 मधील actual values टाका.
-    """
     record_data = st.session_state.get("record_data", [])
     sid = record_data[0]["sid"].strip() if record_data and record_data[0].get("sid","").strip() else "{StudentUniqueId}"
     cid = record_data[0]["cid"].strip() if record_data and record_data[0].get("cid","").strip() else "{ContactUniqueId}"
@@ -510,7 +503,6 @@ with st.expander("⚙️ API Endpoint Configuration", expanded=False):
         with col1:
             actual_ep = next((e for e in st.session_state.api_endpoints if e.get("id")==ep.get("id")), None)
             if actual_ep:
-                # ── बदल: template URL मधील placeholders ऐवजी Record 1 चे actual IDs दाखवा ──
                 display_url = get_resolved_endpoint_url(actual_ep["url"])
                 new_url = st.text_input(
                     label=f"endpoint_{idx}",
@@ -519,7 +511,6 @@ with st.expander("⚙️ API Endpoint Configuration", expanded=False):
                     label_visibility="collapsed",
                     placeholder="https://..."
                 )
-                # जर user ने URL edit केली, ती template मध्ये save करा (actual IDs परत placeholders ने replace करा)
                 record_data = st.session_state.get("record_data", [])
                 sid_val = record_data[0]["sid"].strip() if record_data and record_data[0].get("sid","").strip() else ""
                 cid_val = record_data[0]["cid"].strip() if record_data and record_data[0].get("cid","").strip() else ""
@@ -549,7 +540,6 @@ with st.expander("⚙️ API Endpoint Configuration", expanded=False):
         ep_to_fetch = next((ep for ep in st.session_state.api_endpoints if ep.get("id")==individual_fetch_id), None)
         if ep_to_fetch:
             with st.expander(f"📊 Live Data: {ep_to_fetch.get('label','Custom')}", expanded=True):
-                # fetch करताना resolved URL वापरा
                 fetch_url = get_resolved_endpoint_url(ep_to_fetch.get("url",""))
                 st.markdown(f"**URL:** `{fetch_url}`")
                 try:
@@ -578,8 +568,7 @@ with btn_c:
         "<span style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1a6fd4;'>Step 3</span>"
         "<div style='font-size:17px;font-weight:800;color:#0d2d5e;margin-top:1px;'>Fetch &amp; Validate</div>"
         "<div style='width:32px;height:3px;background:#1a6fd4;border-radius:2px;margin-top:4px;'></div>"
-        "<div style='font-size:12px;color:#64748b;margin-top:6px;margin-bottom:12px;font-weight:400;white-space:nowrap;'>
-         Pull live data from the Ed-Fi ODS and run all field-level validations and descriptor checks.</div>"
+        "<div style='font-size:12px;color:#64748b;margin-top:6px;margin-bottom:12px;font-weight:400;'>Pull live data from the Ed-Fi ODS and run all field-level validations and descriptor checks.</div>"
         "</div>", unsafe_allow_html=True)
     run = st.button("▶  Run Certification Validation", type="primary", width="stretch")
 
