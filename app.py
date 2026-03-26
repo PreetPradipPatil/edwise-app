@@ -1,3 +1,7 @@
+"""
+EdWise Group — Student Verification (with Login)
+File: app.py
+"""
 import streamlit as st
 import pandas as pd
 import requests
@@ -6,21 +10,20 @@ import io
 import base64
 from datetime import datetime, timedelta, timezone
 
+# ── Import shared auth module ─────────────────────────────────────
+from auth import render_login_page, render_logout_button, is_logged_in, get_vendor_creds, get_vendor_name
+
 st.set_page_config(
-    page_title="EdWise | Dex Certification",
+    page_title="EdWise | Student Certification",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 :root { --bg-primary:#f8fafc; --bg-secondary:#ffffff; --text-primary:#1e293b; --border-color:#e2e8f0; }
-@media (prefers-color-scheme: dark) {
-    :root { --bg-primary:#0f172a; --bg-secondary:#1e293b; --text-primary:#f1f5f9; --border-color:#334155; }
-}
 html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif !important; }
 .main { background: var(--bg-primary) !important; color: var(--text-primary) !important; }
 .block-container { padding-top:1rem !important; padding-left:1.8rem !important; padding-right:1.8rem !important; padding-bottom:3rem !important; max-width:100% !important; }
@@ -77,18 +80,23 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 [data-testid="stDataFrame"] { border:1px solid #e2e8f0 !important; border-radius:8px !important; }
 .streamlit-expanderHeader { background:#f8fafc !important; border:1px solid #e2e8f0 !important; border-radius:8px !important; font-size:13px !important; font-weight:600 !important; }
 hr { border-color:#e2e8f0 !important; margin:14px 0 !important; }
-/* Hide Streamlit default page nav items in sidebar */
 [data-testid="stSidebarNav"] { display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────
-# API CONFIG
-# ─────────────────────────────────────────────────────────────────
-TOKEN_URL    = st.secrets["ods_api"]["token_url"]
-API_KEY      = st.secrets["ods_api"]["api_key"]
-API_SECRET   = st.secrets["ods_api"]["api_secret"]
-BASE_API_URL   = st.secrets["ods_api"]["base_api_url"]
+# ════════════════════════════════════════════════════════════════════
+# GATE: SHOW LOGIN IF NOT AUTHENTICATED
+# ════════════════════════════════════════════════════════════════════
+if not is_logged_in():
+    render_login_page()
+    st.stop()
+
+# ── Load vendor-specific API credentials from session ────────────
+_creds       = get_vendor_creds()
+TOKEN_URL    = _creds.get("token_url", "")
+API_KEY      = _creds.get("api_key", "")
+API_SECRET   = _creds.get("api_secret", "")
+BASE_API_URL = _creds.get("base_api_url", "")
 
 # ─────────────────────────────────────────────────────────────────
 # 17 RESOURCES
@@ -223,8 +231,8 @@ def fetch_api_single(url, cols, nested=None, desc_cols=None, bool_cols=None, sho
 # DESCRIPTOR VALIDATION
 # ─────────────────────────────────────────────────────────────────
 DESCRIPTOR_API_MAP = {
-    "BirthSexDescriptor":         f"{BASE_API_URL}/sexDescriptors",
-    "BirthCountryDescriptor":     f"{BASE_API_URL}/countryDescriptors",
+    "BirthSexDescriptor":          f"{BASE_API_URL}/sexDescriptors",
+    "BirthCountryDescriptor":      f"{BASE_API_URL}/countryDescriptors",
     "ElectronicMailTypeDescriptor":f"{BASE_API_URL}/electronicMailTypeDescriptors",
 }
 
@@ -333,7 +341,20 @@ def style_validation_df(df):
     return df.style.apply(color_row, axis=1)
 
 # ─────────────────────────────────────────────────────────────────
-# CUSTOM SIDEBAR (replaces Streamlit default page nav)
+# HELPER: Step 1 मधील Record 1 चे actual IDs मिळवा
+# ─────────────────────────────────────────────────────────────────
+def get_resolved_endpoint_url(template_url):
+    """
+    API endpoint template URL मधील {StudentUniqueId} आणि {ContactUniqueId}
+    placeholders ऐवजी Step 1 / Record 1 मधील actual values टाका.
+    """
+    record_data = st.session_state.get("record_data", [])
+    sid = record_data[0]["sid"].strip() if record_data and record_data[0].get("sid","").strip() else "{StudentUniqueId}"
+    cid = record_data[0]["cid"].strip() if record_data and record_data[0].get("cid","").strip() else "{ContactUniqueId}"
+    return template_url.replace("{StudentUniqueId}", sid).replace("{ContactUniqueId}", cid)
+
+# ─────────────────────────────────────────────────────────────────
+# SIDEBAR — with vendor info + logout
 # ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
@@ -342,7 +363,6 @@ with st.sidebar:
         "<div style='font-size:10px;font-weight:600;color:#94a3b8;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px;'>Vendor Certification Portal</div>"
         "</div>", unsafe_allow_html=True)
 
-    # ── Resource list ────────────────────────────────────────────
     st.markdown("<div style='padding:7px 12px 3px;margin-top:8px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;'>Resources</div>", unsafe_allow_html=True)
     for icon, short, name in RESOURCES:
         label     = f"{icon}  {name}"
@@ -355,7 +375,13 @@ with st.sidebar:
         if is_active:
             st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-top:10px;padding:8px 12px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;'>v3.0.0 · Ed-Fi ODS 2026 · Indiana DOE</div>", unsafe_allow_html=True)
+    # ── Vendor info + logout ──────────────────────────────────────
+    render_logout_button(sidebar=True)
+    st.markdown(
+        f"<div style='padding:4px 12px 8px;font-size:11px;color:#94a3b8;'>"
+        f"v3.0.0 · Ed-Fi ODS 2026 · Indiana DOE</div>",
+        unsafe_allow_html=True,
+    )
 
 # ─────────────────────────────────────────────────────────────────
 # HEADER
@@ -366,13 +392,14 @@ for icon, short, name in RESOURCES:
     if short == active:
         sel_icon=icon; sel_short=short; sel_name=name; break
 sel_full = f"{sel_name} Verification"
+vendor_display = get_vendor_name()
 
 st.markdown(
     f"<div style='background:#ffffff;border:1.5px solid #cbd5e1;border-radius:10px;"
     f"padding:11px 18px;margin-bottom:16px;display:flex;align-items:center;"
     f"justify-content:space-between;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06);box-sizing:border-box;'>"
     f"<div style='display:flex;align-items:center;gap:9px;flex-shrink:0;'>"
-    f"<div style='width:34px;height:34px;flex-shrink:0;background:#1558b0;border-radius:7px;"
+    f"<div style='width:34px;height:34px;flex-shrink:0;background:#dae1f2;border-radius:7px;"
     f"display:flex;align-items:center;justify-content:center;font-size:17px;'>🎓</div>"
     f"<div><div style='font-size:14px;font-weight:800;color:#0d2d5e;white-space:nowrap;'>EdWise Group</div>"
     f"<div style='font-size:9px;color:#94a3b8;letter-spacing:1.4px;text-transform:uppercase;white-space:nowrap;'>Vendor Certification Portal</div></div></div>"
@@ -380,9 +407,9 @@ st.markdown(
     f"<div style='font-size:13px;font-weight:700;color:#0d2d5e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{sel_icon}&nbsp; {sel_full}</div>"
     f"<div style='font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-top:1px;white-space:nowrap;'>Ed-Fi ODS 2026 · Indiana DOE</div></div>"
     f"<div style='text-align:right;flex-shrink:0;'>"
-    f"<div style='font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;'>Demo User&nbsp;"
-    f"<span style='background:#fef3c7;color:#d97706;font-size:10px;font-weight:700;padding:2px 8px;border-radius:50px;'>DEMO</span></div>"
-    f"<div style='font-size:10px;color:#94a3b8;margin-top:2px;white-space:nowrap;'>🔒 Login coming soon</div></div>"
+    f"<div style='font-size:12px;font-weight:600;color:#1e293b;white-space:nowrap;'>{vendor_display}&nbsp;"
+    f"<span style='background:#dbeafe;color:#1a6fd4;font-size:10px;font-weight:700;padding:2px 8px;border-radius:50px;'>LOGGED IN</span></div>"
+    f"<div style='font-size:10px;color:#94a3b8;margin-top:2px;white-space:nowrap;'>🔒 Secure session</div></div>"
     f"</div>", unsafe_allow_html=True)
 
 # COMING SOON
@@ -398,7 +425,6 @@ if active != "Student":
 # STUDENT VERIFICATION MAIN
 # ═══════════════════════════════════════════════════════════════
 
-# ── STEP 1 ───────────────────────────────────────────────────────
 hdr_l, hdr_r = st.columns([3,1])
 with hdr_l:
     st.markdown(
@@ -437,7 +463,6 @@ for row_start in range(0, n, 3):
 
 st.divider()
 
-# ── STEP 2 ───────────────────────────────────────────────────────
 st.markdown(
     "<div style='margin-bottom:10px;'>"
     "<span style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1a6fd4;'>Step 2</span>"
@@ -485,7 +510,25 @@ with st.expander("⚙️ API Endpoint Configuration", expanded=False):
         with col1:
             actual_ep = next((e for e in st.session_state.api_endpoints if e.get("id")==ep.get("id")), None)
             if actual_ep:
-                actual_ep["url"] = st.text_input(label=f"endpoint_{idx}", value=actual_ep["url"], key=f"ep_url_{ep.get('id',idx)}", label_visibility="collapsed", placeholder="https://...")
+                # ── बदल: template URL मधील placeholders ऐवजी Record 1 चे actual IDs दाखवा ──
+                display_url = get_resolved_endpoint_url(actual_ep["url"])
+                new_url = st.text_input(
+                    label=f"endpoint_{idx}",
+                    value=display_url,
+                    key=f"ep_url_{ep.get('id',idx)}",
+                    label_visibility="collapsed",
+                    placeholder="https://..."
+                )
+                # जर user ने URL edit केली, ती template मध्ये save करा (actual IDs परत placeholders ने replace करा)
+                record_data = st.session_state.get("record_data", [])
+                sid_val = record_data[0]["sid"].strip() if record_data and record_data[0].get("sid","").strip() else ""
+                cid_val = record_data[0]["cid"].strip() if record_data and record_data[0].get("cid","").strip() else ""
+                saved_url = new_url
+                if sid_val:
+                    saved_url = saved_url.replace(sid_val, "{StudentUniqueId}")
+                if cid_val:
+                    saved_url = saved_url.replace(cid_val, "{ContactUniqueId}")
+                actual_ep["url"] = saved_url
         with col2:
             if st.button("📊", key=f"ep_fetch_{ep.get('id',idx)}", use_container_width=True, help="Fetch Data"):
                 st.session_state[f"fetch_endpoint_{ep.get('id',idx)}"] = True
@@ -506,7 +549,8 @@ with st.expander("⚙️ API Endpoint Configuration", expanded=False):
         ep_to_fetch = next((ep for ep in st.session_state.api_endpoints if ep.get("id")==individual_fetch_id), None)
         if ep_to_fetch:
             with st.expander(f"📊 Live Data: {ep_to_fetch.get('label','Custom')}", expanded=True):
-                fetch_url = ep_to_fetch.get("url","")
+                # fetch करताना resolved URL वापरा
+                fetch_url = get_resolved_endpoint_url(ep_to_fetch.get("url",""))
                 st.markdown(f"**URL:** `{fetch_url}`")
                 try:
                     token = get_bearer_token()
@@ -527,7 +571,6 @@ button[kind="secondary"]:has(div:contains("🗑️")) { background-color:#fee2e2
 
 st.divider()
 
-# ── STEP 3 ───────────────────────────────────────────────────────
 btn_c, _sp2 = st.columns([2,3])
 with btn_c:
     st.markdown(
@@ -618,13 +661,11 @@ if run:
         st.session_state["ta"] = safe_concat(all_assocs,   ASSOC_COLS)
         st.success(f"✅ Fetched {len(id_pairs)} record pair(s) successfully.")
 
-# ── RESULTS ───────────────────────────────────────────────────────
 if "ts" in st.session_state:
     target_student = st.session_state["ts"]
     target_contact = st.session_state["tc"]
     target_assoc   = st.session_state["ta"]
 
-    # Result 1
     st.markdown(
         "<div style='margin-bottom:10px;'>"
         "<span style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1a6fd4;'>Result 1 · API Response</span>"
@@ -663,7 +704,6 @@ if "ts" in st.session_state:
 
     st.session_state["descriptor_debug_info"] = []
 
-    # Result 2
     st.markdown(
         "<div style='margin-bottom:10px;'>"
         "<span style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#1a6fd4;'>Result 2 · Data Quality</span>"
@@ -714,7 +754,7 @@ if "ts" in st.session_state:
     st.divider()
 
     with st.expander("🔍 Validation API Call Log", expanded=False):
-        st.markdown("<span style='font-size:11px;font-weight:600;color:#64748b;'>Descriptor API lookups performed during validation — inspect raw API responses</span>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:11px;font-weight:600;color:#64748b;'>Descriptor API lookups performed during validation</span>", unsafe_allow_html=True)
         if "descriptor_debug_info" in st.session_state and st.session_state["descriptor_debug_info"]:
             for desc_type, code_value in st.session_state["descriptor_debug_info"]:
                 with st.expander(f"📊 {desc_type}: {code_value}", expanded=False):
@@ -725,7 +765,7 @@ if "ts" in st.session_state:
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        pd.DataFrame([{"Entity":ent,"Total Fields":len(vdf),"Valid":int((vdf["Status"]=="✅ Valid").sum()) if not vdf.empty else 0,"Invalid":int((vdf["Status"]=="❌ Invalid").sum()) if not vdf.empty else 0,"Overall Status":stat} for ent,vdf,stat in [("Student",sv_df,ss),("Contact",cv_df,cs),("StudentContactAssociation",av_df,as_)]]).to_excel(writer,sheet_name="Summary",index=False)
+        pd.DataFrame([{"Entity":ent,"Total Fields":len(vdf),"Valid":int((vdf["Status"]=="✅ Valid").sum()) if not vdf.empty else 0,"Invalid":int((vdf["Status"]=="❌ Invalid").sum()) if not vdf.empty else 0,"Overall Status":stat,"Vendor":get_vendor_name()} for ent,vdf,stat in [("Student",sv_df,ss),("Contact",cv_df,cs),("StudentContactAssociation",av_df,as_)]]).to_excel(writer,sheet_name="Summary",index=False)
         target_student.to_excel(writer,sheet_name="Target_Student",index=False)
         target_contact.to_excel(writer,sheet_name="Target_Contact",index=False)
         target_assoc.to_excel(writer,sheet_name="Target_Assoc",index=False)
