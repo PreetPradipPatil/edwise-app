@@ -11,9 +11,10 @@ import hashlib
 # VENDOR REGISTRY
 # ─────────────────────────────────────────────────────────────────
 VENDOR_DISPLAY_NAMES = {
-    "vendor_skyward_qmative_1017300000": "Skyward Qmative",
-    "vendor_skyward_sMS_1053750000": "Skyward SMS",
+    "vendor_skyward_qmative_1017300000": "Greensburg Community Schools(1017300000)",
+    "vendor_skyward_sMS_1053750000": "MSD Wayne Township(1053750000)",
 }
+
 
 # Module identifier for Student Verification
 _MODULE = "student"

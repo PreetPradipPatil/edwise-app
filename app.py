@@ -268,67 +268,241 @@ def infer_field_type(value):
     if val_str.lower() in ("true","false","1","0"): return "boolean"
     return "text"
 
-def validate_field(field_name, value, sample_value=None, show_debug=False):
+def validate_field(field_name, value, sample_value=None, show_debug=False, is_mandatory=None):
+    """
+    Validate a single field value.
+
+    is_mandatory (bool | None):
+        True  → field had a value in the vendor sample data (mandatory).
+        False → field was blank in all vendor sample rows (non-mandatory).
+        None  → fall back to the static MANDATORY_FIELDS set for backward compatibility.
+    """
     val = value
-    is_empty = (val is None or str(val).strip()=="" or str(val).strip().lower() in ("none","nan","null"))
+    is_empty = (val is None or str(val).strip() == "" or str(val).strip().lower() in ("none", "nan", "null"))
+
+    # ── Resolve mandate status ─────────────────────────────────────────
+    if is_mandatory is None:
+        # Legacy fallback: use sample_value + static MANDATORY_FIELDS
+        sample_empty = (
+            sample_value is None
+            or str(sample_value).strip() == ""
+            or str(sample_value).strip().lower() in ("none", "nan")
+        )
+        is_mandatory = (not sample_empty) or (field_name in MANDATORY_FIELDS)
+
+    mandate_tag = "Field is mandatory" if is_mandatory else "Field is non-mandatory"
+
+    # ── Empty value handling ───────────────────────────────────────────
     if is_empty:
-        sample_empty = (sample_value is None or str(sample_value).strip()=="" or str(sample_value).strip().lower() in ("none","nan"))
-        if not sample_empty and field_name in MANDATORY_FIELDS:
-            return False, "❗ Mandatory field — value required but not posted by vendor"
-        return False, "Missing — no value posted"
-    if field_name in ("StudentUniqueId","ContactUniqueId"): return True, "Value present (alphanumeric accepted)"
-    if field_name in ("FirstName","MiddleName","LastSurname"):
-        if not re.match(r"^[A-Za-z\s\-'\.]+$", str(val).strip()): return False, f"Invalid — non-character value: '{val}'"
-        return True, "Valid character value"
+        if not is_mandatory:
+            return True, (
+                "ℹ️ Non-mandatory field – value not required "
+                "(field was left blank in vendor sample data, so absence in API response is acceptable)"
+            )
+        return False, (
+            f"❗ Mandatory field missing — '{field_name}' is required "
+            "(field has a value in vendor sample data) but was not posted by vendor"
+        )
+
+    # ── Non-empty: run format / API validation then append mandate tag ─
+    if field_name in ("StudentUniqueId", "ContactUniqueId"):
+        return True, f"Value present (alphanumeric accepted) | {mandate_tag}"
+
+    if field_name in ("FirstName", "MiddleName", "LastSurname"):
+        if not re.match(r"^[A-Za-z\s\-'\.]+$", str(val).strip()):
+            return False, f"Invalid — non-character value: '{val}' | {mandate_tag}"
+        return True, f"Valid character value | {mandate_tag}"
+
     if field_name in DESCRIPTOR_API_MAP:
-        return check_descriptor_via_api(field_name, str(val).strip(), show_debug=show_debug)
+        ok, reason = check_descriptor_via_api(field_name, str(val).strip(), show_debug=show_debug)
+        return ok, f"{reason} | {mandate_tag}"
+
     if field_name == "BirthDate":
         clean = str(val).strip()
         if re.match(r"^\d{4}-\d{2}-\d{2}$", clean):
-            try: datetime.strptime(clean,"%Y-%m-%d"); return True, f"Valid date format: '{clean}'"
-            except ValueError: return False, f"Invalid date: '{clean}'"
-        return False, f"Invalid date format: '{clean}' — expected YYYY-MM-DD"
+            try:
+                datetime.strptime(clean, "%Y-%m-%d")
+                return True, f"Valid date format: '{clean}' | {mandate_tag}"
+            except ValueError:
+                return False, f"Invalid date: '{clean}' | {mandate_tag}"
+        return False, f"Invalid date format: '{clean}' — expected YYYY-MM-DD | {mandate_tag}"
+
     if field_name == "ElectronicMailAddress":
         clean = str(val).strip()
-        if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean): return True, "Valid email format"
-        return False, f"Invalid email format: '{clean}'"
+        if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean):
+            return True, f"Valid email format | {mandate_tag}"
+        return False, f"Invalid email format: '{clean}' | {mandate_tag}"
+
     if field_name == "LegalDesignee":
         clean = str(val).strip().lower()
-        if clean in ("true","false","1","0"): return True, f"Valid boolean: '{val}'"
-        return False, f"Invalid — expected true/false, got: '{val}'"
-    ft = infer_field_type(val)
-    if ft == "numeric":  return True, f"Valid numeric value: '{val}'"
-    elif ft == "date":   return True, f"Valid date value: '{val}'"
-    elif ft == "email":  return True, f"Valid email format: '{val}'"
-    elif ft == "boolean":return True, f"Valid boolean value: '{val}'"
-    return True, f"Valid text value: '{val}'"
+        if clean in ("true", "false", "1", "0"):
+            return True, f"Valid boolean: '{val}' | {mandate_tag}"
+        return False, f"Invalid — expected true/false, got: '{val}' | {mandate_tag}"
 
-def run_field_validation(target_df, sample_df, show_descriptor_debug=False):
+    ft = infer_field_type(val)
+    if ft == "numeric":   return True, f"Valid numeric value: '{val}' | {mandate_tag}"
+    elif ft == "date":    return True, f"Valid date value: '{val}' | {mandate_tag}"
+    elif ft == "email":   return True, f"Valid email format: '{val}' | {mandate_tag}"
+    elif ft == "boolean": return True, f"Valid boolean value: '{val}' | {mandate_tag}"
+    return True, f"Valid text value: '{val}' | {mandate_tag}"
+
+def _build_mandatory_sets(sample_df):
+    """
+    Scan every column of sample_df (all rows).
+    Returns:
+        mandatory_fields     — columns that have at least one non-empty value
+        non_mandatory_fields — columns where every row is blank / None
+    Fields absent from sample_df entirely are treated as mandatory (safe default).
+    """
+    mandatory, non_mandatory = set(), set()
+    if sample_df is None or sample_df.empty:
+        return mandatory, non_mandatory
+    for col in sample_df.columns:
+        if col.startswith("_"):
+            continue
+        has_value = sample_df[col].apply(
+            lambda v: not (
+                v is None
+                or str(v).strip() == ""
+                or str(v).strip().lower() in ("none", "nan", "null", "<na>")
+            )
+        ).any()
+        if has_value:
+            mandatory.add(col)
+        else:
+            non_mandatory.add(col)
+    return mandatory, non_mandatory
+
+
+def _build_mandatory_sets_for_row(sample_row_dict):
+    """
+    Given a SINGLE sample-data row dict (one record's row from Step 2),
+    return mandatory_fields and non_mandatory_fields sets for that specific record.
+
+    A field is mandatory for this record  → it has a non-empty value in this row.
+    A field is non-mandatory for this record → it is blank/empty in this row.
+    This enables each record to independently control which fields are mandatory.
+    """
+    mandatory, non_mandatory = set(), set()
+    if not sample_row_dict:
+        return mandatory, non_mandatory
+    for col, val in sample_row_dict.items():
+        if col.startswith("_"):
+            continue
+        is_empty = (
+            val is None
+            or str(val).strip() == ""
+            or str(val).strip().lower() in ("none", "nan", "null", "<na>")
+        )
+        if not is_empty:
+            mandatory.add(col)
+        else:
+            non_mandatory.add(col)
+    return mandatory, non_mandatory
+
+
+def run_field_validation(target_df, sample_df, show_descriptor_debug=False, sample_rows=None):
+    """
+    Validate every field in target_df.
+
+    sample_rows (optional, list of dicts):
+        Per-record sample data — index 0 = Record 1, index 1 = Record 2, etc.
+        For each target record, the matching sample row (by rec_num - 1) is used to
+        independently determine which fields are mandatory vs non-mandatory for
+        THAT record only. Record 1 can have a field as mandatory while Record 2
+        has the same field as non-mandatory, based on Step 2 edits.
+        TAKES PRIORITY over sample_df when provided.
+
+    sample_df (optional, pd.DataFrame):
+        Legacy / fallback — whole-DataFrame mandate determination (all records share
+        the same mandatory/non-mandatory sets). Used only when sample_rows is None.
+    """
     rows = []
     descriptor_debug_info = []
+
+    # ── Build global mandatory / non-mandatory sets (legacy fallback) ──
+    global_mandatory_fields, global_non_mandatory_fields = _build_mandatory_sets(sample_df)
+
     for rec_idx, row in target_df.iterrows():
-        api_status = row.get("_api_status","FOUND") if "_api_status" in target_df.columns else "FOUND"
-        rec_num    = row.get("_record_num", rec_idx+1) if "_record_num" in target_df.columns else rec_idx+1
+        api_status = row.get("_api_status", "FOUND") if "_api_status" in target_df.columns else "FOUND"
+        rec_num    = row.get("_record_num", rec_idx + 1) if "_record_num" in target_df.columns else rec_idx + 1
+
+        # ── Per-record mandatory/non-mandatory determination ─────────────
+        # When sample_rows is provided, use the row at index (rec_num - 1) so
+        # each record independently controls which fields are mandatory.
+        if sample_rows is not None:
+            rec_zero_idx = int(rec_num) - 1
+            sample_row_dict = (
+                sample_rows[rec_zero_idx]
+                if 0 <= rec_zero_idx < len(sample_rows)
+                else {}
+            )
+            mandatory_fields, non_mandatory_fields = _build_mandatory_sets_for_row(sample_row_dict)
+        else:
+            mandatory_fields, non_mandatory_fields = global_mandatory_fields, global_non_mandatory_fields
+
         for col in target_df.columns:
-            if col.startswith("_"): continue
+            if col.startswith("_"):
+                continue
             val = row[col]
-            if col in DESCRIPTOR_API_MAP and val is not None and str(val).strip() != "" and api_status not in ("NOT_FOUND","SKIPPED"):
+
+            if col in DESCRIPTOR_API_MAP and val is not None and str(val).strip() != "" and api_status not in ("NOT_FOUND", "SKIPPED"):
                 desc_tuple = (col, str(val).strip())
-                if desc_tuple not in descriptor_debug_info: descriptor_debug_info.append(desc_tuple)
+                if desc_tuple not in descriptor_debug_info:
+                    descriptor_debug_info.append(desc_tuple)
+
+            # ── Hard-status short-circuits ─────────────────────────────
             if api_status == "NOT_FOUND":
-                rows.append({"Record #":rec_num,"Field":col,"Value":"NULL","Status":"❌ Invalid","Reason":"🔴 Record NOT FOUND — vendor did not post this record to API"})
+                rows.append({
+                    "Record #": rec_num, "Field": col, "Value": "NULL",
+                    "Status": "❌ Invalid",
+                    "Reason": "🔴 Record NOT FOUND — vendor did not post this record to API",
+                })
                 continue
+
             if api_status == "SKIPPED":
-                rows.append({"Record #":rec_num,"Field":col,"Value":"—","Status":"⏭ Skipped","Reason":"ID not provided — entity not fetched"})
+                rows.append({
+                    "Record #": rec_num, "Field": col, "Value": "—",
+                    "Status": "⏭ Skipped",
+                    "Reason": "ID not provided — entity not fetched",
+                })
                 continue
-            sample_val = (sample_df[col].iloc[0] if (sample_df is not None and col in sample_df.columns) else None)
-            is_valid, reason = validate_field(col, val, sample_val, show_debug=False)
-            rows.append({"Record #":rec_num,"Field":col,"Value":str(val) if val is not None else "","Status":"✅ Valid" if is_valid else "❌ Invalid","Reason":reason})
+
+            # ── Determine mandate status for this field ────────────────
+            # Non-mandatory only if explicitly blank in the record's sample row;
+            # unknown fields (not present in sample data) default to mandatory.
+            if col in non_mandatory_fields:
+                is_mandatory = False
+            elif col in mandatory_fields:
+                is_mandatory = True
+            else:
+                is_mandatory = True   # field not in sample data → mandatory (safe default)
+
+            sample_val = (
+                sample_df[col].iloc[0]
+                if (sample_df is not None and col in sample_df.columns)
+                else None
+            )
+            is_valid, reason = validate_field(
+                col, val, sample_val,
+                show_debug=False,
+                is_mandatory=is_mandatory,
+            )
+            rows.append({
+                "Record #": rec_num,
+                "Field":    col,
+                "Value":    str(val) if val is not None else "",
+                "Status":   "✅ Valid" if is_valid else "❌ Invalid",
+                "Reason":   reason,
+            })
+
     if descriptor_debug_info:
         existing = st.session_state.get("descriptor_debug_info", [])
         for item in descriptor_debug_info:
-            if item not in existing: existing.append(item)
+            if item not in existing:
+                existing.append(item)
         st.session_state["descriptor_debug_info"] = existing
+
     return pd.DataFrame(rows)
 
 def style_validation_df(df):
@@ -432,6 +606,19 @@ with hdr_r:
     if st.button("+ Add New Record", key="add_record", type="primary"):
         st.session_state.num_records += 1
         st.session_state.record_data.append({"sid":"","cid":""})
+        # Add a new default sample row for each entity so Step 2
+        # always shows exactly one row per record added in Step 1.
+        st.session_state.sample_student_rows.append(
+            {"StudentUniqueId":"","FirstName":"LILY","MiddleName":"SOFVIA","LastSurname":"ACRA",
+             "BirthSexDescriptor":"Female","BirthDate":"2008-03-24","BirthCountryDescriptor":"USA"}
+        )
+        st.session_state.sample_contact_rows.append(
+            {"ContactUniqueId":"","FirstName":"TODD","LastSurname":"ACRA",
+             "ElectronicMailTypeDescriptor":"Home/Personal","ElectronicMailAddress":"todd.acra@example.com"}
+        )
+        st.session_state.sample_assoc_rows.append(
+            {"StudentUniqueId":"","ContactUniqueId":"","LegalDesignee":"true"}
+        )
         st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -472,16 +659,48 @@ if st.session_state.sample_assoc_rows:
     st.session_state.sample_assoc_rows[0]["StudentUniqueId"] = sid1
     st.session_state.sample_assoc_rows[0]["ContactUniqueId"] = cid1
 
-def render_editable_sample(entity_key, rows_key):
-    rows = st.session_state[rows_key]
+# Sync each record's IDs into its corresponding sample row (record i → index i)
+for _i, (_sid, _cid, _rec_num) in enumerate(id_pairs):
+    if _i == 0:
+        continue  # already handled above
+    if _i < len(st.session_state.sample_student_rows) and _sid:
+        st.session_state.sample_student_rows[_i]["StudentUniqueId"] = _sid
+    if _i < len(st.session_state.sample_contact_rows) and _cid:
+        st.session_state.sample_contact_rows[_i]["ContactUniqueId"] = _cid
+    if _i < len(st.session_state.sample_assoc_rows):
+        if _sid:
+            st.session_state.sample_assoc_rows[_i]["StudentUniqueId"] = _sid
+        if _cid:
+            st.session_state.sample_assoc_rows[_i]["ContactUniqueId"] = _cid
+
+# Default row templates used when auto-filling missing sample rows
+_STUDENT_DEFAULT = {"StudentUniqueId":"","FirstName":"LILY","MiddleName":"SOFVIA","LastSurname":"ACRA",
+                    "BirthSexDescriptor":"Female","BirthDate":"2008-03-24","BirthCountryDescriptor":"USA"}
+_CONTACT_DEFAULT = {"ContactUniqueId":"","FirstName":"TODD","LastSurname":"ACRA",
+                    "ElectronicMailTypeDescriptor":"Home/Personal","ElectronicMailAddress":"todd.acra@example.com"}
+_ASSOC_DEFAULT   = {"StudentUniqueId":"","ContactUniqueId":"","LegalDesignee":"true"}
+
+_SAMPLE_DEFAULTS = {
+    "sample_student_rows": _STUDENT_DEFAULT,
+    "sample_contact_rows": _CONTACT_DEFAULT,
+    "sample_assoc_rows":   _ASSOC_DEFAULT,
+}
+
+def render_editable_sample(entity_key, rows_key, num_records):
+    rows = st.session_state.get(rows_key, [])
+    # Ensure exactly num_records rows — add defaults for missing rows.
+    default = _SAMPLE_DEFAULTS.get(rows_key, {})
+    while len(rows) < num_records:
+        rows.append(default.copy())
+    st.session_state[rows_key] = rows
     edited = st.data_editor(pd.DataFrame(rows), key=f"editor_{entity_key}", width="stretch", num_rows="dynamic", hide_index=True)
     st.session_state[rows_key] = edited.to_dict(orient="records")
     return edited
 
 sample_tabs = st.tabs(["👤 Student","📞 Contact","🔗 StudentContactAssociation"])
-with sample_tabs[0]: sample_student_df = render_editable_sample("student","sample_student_rows")
-with sample_tabs[1]: sample_contact_df = render_editable_sample("contact","sample_contact_rows")
-with sample_tabs[2]: sample_assoc_df   = render_editable_sample("assoc","sample_assoc_rows")
+with sample_tabs[0]: sample_student_df = render_editable_sample("student","sample_student_rows", st.session_state.num_records)
+with sample_tabs[1]: sample_contact_df = render_editable_sample("contact","sample_contact_rows", st.session_state.num_records)
+with sample_tabs[2]: sample_assoc_df   = render_editable_sample("assoc","sample_assoc_rows",    st.session_state.num_records)
 
 st.divider()
 
@@ -705,9 +924,12 @@ if "ts" in st.session_state:
     sample_s = pd.DataFrame(st.session_state.sample_student_rows)
     sample_c = pd.DataFrame(st.session_state.sample_contact_rows)
     sample_a = pd.DataFrame(st.session_state.sample_assoc_rows)
-    sv_df = run_field_validation(target_student, sample_s, show_descriptor_debug=True)
-    cv_df = run_field_validation(target_contact, sample_c, show_descriptor_debug=True)
-    av_df = run_field_validation(target_assoc,   sample_a, show_descriptor_debug=True)
+    sv_df = run_field_validation(target_student, sample_s, show_descriptor_debug=True,
+                                 sample_rows=st.session_state.sample_student_rows)
+    cv_df = run_field_validation(target_contact, sample_c, show_descriptor_debug=True,
+                                 sample_rows=st.session_state.sample_contact_rows)
+    av_df = run_field_validation(target_assoc,   sample_a, show_descriptor_debug=True,
+                                 sample_rows=st.session_state.sample_assoc_rows)
 
     def entity_status(vdf):
         if vdf.empty: return "❌ FAIL — No records"
