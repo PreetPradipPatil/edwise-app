@@ -149,6 +149,26 @@ MANDATORY_FIELDS = {
     "ContactUniqueId","ElectronicMailTypeDescriptor","ElectronicMailAddress","LegalDesignee",
 }
 
+# Per-entity mandatory fields for Step 2 UI star (★) markers in column headers.
+# Keys match the entity_key values passed to render_editable_sample().
+MANDATORY_FIELDS_BY_ENTITY = {
+    "student": {
+        "StudentUniqueId",
+        "FirstName",
+        "LastSurname",
+        "BirthDate",
+    },
+    "contact": {
+        "ContactUniqueId",
+        "FirstName",
+        "LastSurname",
+    },
+    "assoc": {
+        "StudentUniqueId",
+        "ContactUniqueId",
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────
 # API HELPERS
 # ─────────────────────────────────────────────────────────────────
@@ -693,7 +713,35 @@ def render_editable_sample(entity_key, rows_key, num_records):
     while len(rows) < num_records:
         rows.append(default.copy())
     st.session_state[rows_key] = rows
-    edited = st.data_editor(pd.DataFrame(rows), key=f"editor_{entity_key}", width="stretch", num_rows="dynamic", hide_index=True)
+
+    # ── Build column_config: mandatory fields get a ★ red-star label ──────
+    _df_for_edit = pd.DataFrame(rows)
+    _mandatory   = MANDATORY_FIELDS_BY_ENTITY.get(entity_key, set())
+    _col_config  = {
+        col: st.column_config.Column(label=f"★ {col}")
+        for col in _df_for_edit.columns
+        if col in _mandatory
+    }
+
+    # ── Mandatory field legend ─────────────────────────────────────────────
+    if _col_config:
+        st.markdown(
+            "<div style='font-size:11px;font-weight:600;margin-bottom:4px;'>"
+            "<span style='color:#dc2626;font-size:10px;'>★</span>"
+            " <span style='color:#dc2626;'>= Mandatory field</span>"
+            " <span style='color:#64748b;'>(required by Ed-Fi ODS schema)</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    edited = st.data_editor(
+        _df_for_edit,
+        key=f"editor_{entity_key}",
+        width="stretch",
+        num_rows="dynamic",
+        hide_index=True,
+        column_config=_col_config if _col_config else None,
+    )
     st.session_state[rows_key] = edited.to_dict(orient="records")
     return edited
 
